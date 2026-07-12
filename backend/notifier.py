@@ -23,7 +23,7 @@ def send_email(subject: str, body: str):
 
     if not all([host, user, password]):
         print("[notifier] SMTP not configured, skipping email. Set SMTP_HOST/SMTP_USER/SMTP_PASSWORD in .env")
-        return
+        return False  # not configured -> nothing sent (not an error)
 
     recipients = get_recipients()
     msg = MIMEText(body, "html")
@@ -31,15 +31,18 @@ def send_email(subject: str, body: str):
     msg["From"] = user
     msg["To"] = ", ".join(recipients)
 
-    with smtplib.SMTP(host, port) as server:
+    with smtplib.SMTP(host, port, timeout=30) as server:
         server.starttls()
         server.login(user, password)
         server.sendmail(user, recipients, msg.as_string())
+    return True  # sent successfully; SMTP failures raise instead
 
 
-def notify_new_jobs(jobs: list[dict]):
+def notify_new_jobs(jobs: list[dict]) -> bool:
+    """Returns True if an email was sent, False if skipped (SMTP unconfigured).
+    Raises on an actual SMTP/auth failure so callers can log it."""
     if not jobs:
-        return
+        return False
     lines = [f"<b>{len(jobs)} new job posting(s) found:</b><br><br>"]
     for j in jobs:
         lines.append(
@@ -48,4 +51,4 @@ def notify_new_jobs(jobs: list[dict]):
         )
     body = "".join(lines)
     subject = f"{len(jobs)} new job posting(s) — Job Dashboard"
-    send_email(subject, body)
+    return send_email(subject, body)

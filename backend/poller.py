@@ -59,14 +59,34 @@ async def poll_company(client: httpx.AsyncClient, company: Company) -> list[dict
         return []
 
 
+EMAIL_LABEL = "Email alerts"
+
+
+def _notify_and_log(new_jobs: list[dict]) -> None:
+    """Send the alert email and record the outcome in poll_log so the dashboard's
+    debug sidebar surfaces SMTP failures alongside per-company poll errors."""
+    if not new_jobs:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        sent = notify_new_jobs(new_jobs)
+        if sent:
+            with db.get_conn() as conn:
+                db.log_poll(conn, EMAIL_LABEL, now, "ok", new_jobs=len(new_jobs))
+            log.info("email alert sent for %d job(s)", len(new_jobs))
+    except Exception as e:  # noqa: BLE001
+        log.warning("email send failed: %s", e)
+        with db.get_conn() as conn:
+            db.log_poll(conn, EMAIL_LABEL, now, "error", error=str(e))
+
+
 async def poll_all() -> list[dict]:
     all_new = []
     async with httpx.AsyncClient(headers={"User-Agent": "Mozilla/5.0 (job-dashboard local poller)"}) as client:
         results = await asyncio.gather(*[poll_company(client, c) for c in COMPANIES])
     for r in results:
         all_new.extend(r)
-    if all_new:
-        notify_new_jobs(all_new)
+    _notify_and_log(all_new)
     return all_new
 
 
