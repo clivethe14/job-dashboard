@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Job Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #262b36;
+    --text: #e6e9ef;
+    --muted: #8b93a7;
+    --accent: #4f8cff;
+    --new: #2fbf71;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f6f8;
+      --panel: #ffffff;
+      --border: #e2e5ea;
+      --text: #1a1d24;
+      --muted: #5c6270;
+      --accent: #2f6fed;
+      --new: #1a9c56;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  h1 { font-size: 20px; margin: 0; }
+  .controls { display: flex; gap: 10px; align-items: center; }
+  select, button {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    cursor: pointer;
+  }
+  button:hover { opacity: 0.9; }
+  main { padding: 20px 28px; max-width: 1000px; margin: 0 auto; }
+  .job-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .job-title { font-size: 15px; font-weight: 600; }
+  .job-meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .badge {
+    font-size: 11px;
+    color: var(--new);
+    border: 1px solid var(--new);
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+  a.job-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  #status { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  #empty { color: var(--muted); padding: 40px 0; text-align: center; }
+
+  .layout { display: flex; }
+  main { padding: 20px 28px; max-width: 1000px; margin: 0 auto; flex: 1; }
+
+  #debugToggle { position: relative; }
+  #debugToggle .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--new);
+    margin-right: 6px;
+  }
+  #debugToggle .dot.has-errors { background: #e5484d; }
+
+  #debugPanel {
+    width: 340px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    background: var(--panel);
+    padding: 20px;
+    display: none;
+    max-height: 100vh;
+    overflow-y: auto;
+    position: sticky;
+    top: 0;
+  }
+  #debugPanel.open { display: block; }
+  #debugPanel h2 { font-size: 15px; margin: 0 0 12px; }
+  #debugPanel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 20px 0 8px; }
+  .health-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .health-row .name { display: flex; align-items: center; gap: 8px; }
+  .health-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .health-dot.ok { background: var(--new); }
+  .health-dot.error { background: #e5484d; }
+  .health-time { color: var(--muted); font-size: 11px; }
+  .error-item {
+    font-size: 12px;
+    background: rgba(229, 72, 77, 0.1);
+    border: 1px solid rgba(229, 72, 77, 0.3);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+  }
+  .error-item .err-company { font-weight: 600; color: #e5484d; }
+  .error-item .err-time { color: var(--muted); font-size: 11px; margin: 2px 0 4px; }
+  .error-item .err-msg { color: var(--text); word-break: break-word; }
+  .no-errors { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Job Dashboard</h1>
+  <div class="controls">
+    <select id="companyFilter"><option value="">All companies</option></select>
+    <button id="refreshBtn">Refresh</button>
+    <button id="pollBtn">Poll now</button>
+    <button id="debugToggle"><span class="dot" id="debugDot"></span>Debug</button>
+  </div>
+</header>
+<div class="layout">
+  <main>
+    <div id="status"></div>
+    <div id="jobList"></div>
+    <div id="empty" style="display:none;">No postings yet — click "Poll now" or wait for the next scheduled check.</div>
+  </main>
+  <aside id="debugPanel">
+    <h2>Poll health</h2>
+    <div id="healthList"></div>
+    <h3>Recent errors</h3>
+    <div id="errorList"></div>
+  </aside>
+</div>
+<script>
+const jobList = document.getElementById('jobList');
+const status = document.getElementById('status');
+const empty = document.getElementById('empty');
+const companyFilter = document.getElementById('companyFilter');
+
+function timeAgo(iso) {
+  if (!iso) return '';
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.floor(hrs / 24) + 'd ago';
+}
+
+async function loadCompanies() {
+  const res = await fetch('/api/companies');
+  const companies = await res.json();
+  for (const c of companies) {
+    const opt = document.createElement('option');
+    opt.value = c.name;
+    opt.textContent = c.name;
+    companyFilter.appendChild(opt);
+  }
+}
+
+async function loadJobs() {
+  status.textContent = 'Loading...';
+  const company = companyFilter.value;
+  const url = '/api/jobs' + (company ? '?company=' + encodeURIComponent(company) : '');
+  const res = await fetch(url);
+  const jobs = await res.json();
+  jobList.innerHTML = '';
+  empty.style.display = jobs.length ? 'none' : 'block';
+  for (const j of jobs) {
+    const isNew = (Date.now() - new Date(j.first_seen_at).getTime()) < 24 * 3600 * 1000;
+    const card = document.createElement('div');
+    card.className = 'job-card';
+    card.innerHTML = `
+      <div>
+        <div class="job-title">${j.title} ${isNew ? '<span class="badge">NEW</span>' : ''}</div>
+        <div class="job-meta">${j.company} · ${j.location || 'Location N/A'} · seen ${timeAgo(j.first_seen_at)}</div>
+      </div>
+      <a class="job-link" href="${j.url}" target="_blank" rel="noopener">View →</a>
+    `;
+    jobList.appendChild(card);
+  }
+  status.textContent = jobs.length + ' postings · last refreshed ' + new Date().toLocaleTimeString();
+}
+
+document.getElementById('refreshBtn').addEventListener('click', loadJobs);
+document.getElementById('pollBtn').addEventListener('click', async () => {
+  status.textContent = 'Polling all companies...';
+  const res = await fetch('/api/poll', { method: 'POST' });
+  const data = await res.json();
+  status.textContent = 'Poll complete: ' + data.new_jobs + ' new job(s) found.';
+  await loadJobs();
+  await loadDebug();
+});
+companyFilter.addEventListener('change', loadJobs);
+
+const debugPanel = document.getElementById('debugPanel');
+const debugDot = document.getElementById('debugDot');
+const healthList = document.getElementById('healthList');
+const errorList = document.getElementById('errorList');
+
+document.getElementById('debugToggle').addEventListener('click', () => {
+  debugPanel.classList.toggle('open');
+});
+
+async function loadDebug() {
+  const [healthRes, errorsRes] = await Promise.all([
+    fetch('/api/health'),
+    fetch('/api/errors?limit=50'),
+  ]);
+  const health = await healthRes.json();
+  const errors = await errorsRes.json();
+
+  debugDot.classList.toggle('has-errors', health.some(h => h.status === 'error'));
+
+  healthList.innerHTML = '';
+  for (const h of health) {
+    const row = document.createElement('div');
+    row.className = 'health-row';
+    row.innerHTML = `
+      <div class="name">
+        <span class="health-dot ${h.status === 'ok' ? 'ok' : 'error'}"></span>
+        ${h.company}
+      </div>
+      <span class="health-time">${timeAgo(h.ran_at)}</span>
+    `;
+    healthList.appendChild(row);
+  }
+
+  errorList.innerHTML = '';
+  if (errors.length === 0) {
+    errorList.innerHTML = '<div class="no-errors">No errors recorded.</div>';
+  } else {
+    for (const e of errors) {
+      const item = document.createElement('div');
+      item.className = 'error-item';
+      item.innerHTML = `
+        <div class="err-company">${e.company}</div>
+        <div class="err-time">${timeAgo(e.ran_at)}</div>
+        <div class="err-msg">${e.error || ''}</div>
+      `;
+      errorList.appendChild(item);
+    }
+  }
+}
+
+loadCompanies();
+loadJobs();
+loadDebug();
+setInterval(loadJobs, 60000);
+setInterval(loadDebug, 60000);
+</script>
+</body>
+</html>
