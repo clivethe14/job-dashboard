@@ -149,6 +149,10 @@
   <h1>Job Dashboard</h1>
   <div class="controls">
     <select id="companyFilter"><option value="">All companies</option></select>
+    <select id="locationFilter">
+      <option value="all">All locations</option>
+      <option value="usa">USA only</option>
+    </select>
     <button id="refreshBtn">Refresh</button>
     <button id="pollBtn">Poll now</button>
     <button id="debugToggle"><span class="dot" id="debugDot"></span>Debug</button>
@@ -172,6 +176,36 @@ const jobList = document.getElementById('jobList');
 const status = document.getElementById('status');
 const empty = document.getElementById('empty');
 const companyFilter = document.getElementById('companyFilter');
+const locationFilter = document.getElementById('locationFilter');
+
+// --- USA-only filtering (option B: hide only clearly non-US) --------------
+// Location strings are freeform and inconsistent across sources, so this is a
+// heuristic. A job is HIDDEN in "USA only" mode only when it looks non-US AND
+// carries no US signal; anything US or ambiguous ("Remote", "2 Locations",
+// bare city) stays visible.
+const US_STATE_ABBR = ['al','ak','az','ar','ca','co','ct','de','fl','ga','hi','id','il','in','ia','ks','ky','la','me','md','ma','mi','mn','ms','mo','mt','ne','nv','nh','nj','nm','ny','nc','nd','oh','ok','or','pa','ri','sc','sd','tn','tx','ut','vt','va','wa','wv','wi','wy','dc'];
+const US_STATE_NAMES = ['alabama','alaska','arizona','arkansas','california','colorado','connecticut','delaware','florida','georgia','hawaii','idaho','illinois','indiana','iowa','kansas','kentucky','louisiana','maine','maryland','massachusetts','michigan','minnesota','mississippi','missouri','montana','nebraska','nevada','new hampshire','new jersey','new mexico','new york','north carolina','north dakota','ohio','oklahoma','oregon','pennsylvania','rhode island','south carolina','south dakota','tennessee','texas','utah','vermont','virginia','washington','west virginia','wisconsin','wyoming'];
+const NON_US_SIGNALS = ['united kingdom','england','scotland','ireland','india','canada','germany','singapore','australia','netherlands','france','spain','poland','japan','israel','brazil','china','sweden','norway','lithuania','south korea','united arab emirates','uae','mexico','portugal','italy','switzerland','denmark','finland','belgium','austria','romania','czech','slovakia','hungary','ukraine','philippines','indonesia','vietnam','thailand','malaysia','taiwan','hong kong','new zealand','argentina','colombia','chile','egypt','nigeria','kenya','south africa','saudi arabia','qatar','turkey','greece','bulgaria','croatia','estonia','latvia','luxembourg','morocco','peru','uruguay','costa rica',
+  // major foreign cities that may appear without a country
+  'london','dublin','galway','cork','toronto','vancouver','montreal','ottawa','waterloo','bangalore','bengaluru','hyderabad','mumbai','pune','gurgaon','gurugram','chennai','delhi','noida','amsterdam','paris','berlin','munich','madrid','barcelona','warsaw','krakow','tokyo','tel aviv','sao paulo','beijing','shanghai','shenzhen','stockholm','oslo','vilnius','seoul','dubai','abu dhabi','sydney','melbourne','canberra','singapore','zurich','geneva','copenhagen','helsinki','brussels','lisbon','milan','rome','prague','bucharest','budapest','manila','jakarta','bangkok','kuala lumpur','taipei','auckland'];
+
+function wordRe(w) { return new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b'); }
+
+function hasUsSignal(t) {
+  if (/\b(usa|u\.s\.a|u\.s|united states)\b/.test(t)) return true;
+  if (US_STATE_ABBR.some(s => wordRe(s).test(t))) return true;
+  if (US_STATE_NAMES.some(s => t.includes(s))) return true;
+  return false;
+}
+function hasNonUsSignal(t) {
+  return NON_US_SIGNALS.some(s => t.includes(s));
+}
+function isClearlyNonUs(location) {
+  const t = (location || '').toLowerCase();
+  if (!t) return false;                 // empty -> ambiguous -> keep
+  if (hasUsSignal(t)) return false;     // any US signal -> keep
+  return hasNonUsSignal(t);             // otherwise hide only if a non-US signal is present
+}
 
 function timeAgo(iso) {
   if (!iso) return '';
@@ -200,7 +234,15 @@ async function loadJobs() {
   const company = companyFilter.value;
   const url = '/api/jobs' + (company ? '?company=' + encodeURIComponent(company) : '');
   const res = await fetch(url);
-  const jobs = await res.json();
+  let jobs = await res.json();
+  const total = jobs.length;
+  let hidden = 0;
+  if (locationFilter.value === 'usa') {
+    jobs = jobs.filter(j => {
+      if (isClearlyNonUs(j.location)) { hidden++; return false; }
+      return true;
+    });
+  }
   jobList.innerHTML = '';
   empty.style.display = jobs.length ? 'none' : 'block';
   for (const j of jobs) {
@@ -216,10 +258,12 @@ async function loadJobs() {
     `;
     jobList.appendChild(card);
   }
-  status.textContent = jobs.length + ' postings · last refreshed ' + new Date().toLocaleTimeString();
+  const suffix = hidden ? ` (${hidden} non-US hidden)` : '';
+  status.textContent = jobs.length + ' postings' + suffix + ' · last refreshed ' + new Date().toLocaleTimeString();
 }
 
 document.getElementById('refreshBtn').addEventListener('click', loadJobs);
+locationFilter.addEventListener('change', loadJobs);
 document.getElementById('pollBtn').addEventListener('click', async () => {
   status.textContent = 'Polling all companies...';
   const res = await fetch('/api/poll', { method: 'POST' });
