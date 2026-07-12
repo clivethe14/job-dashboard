@@ -8,7 +8,9 @@ POLL_INTERVAL_MINUTES = 60
 # and options if you want to add them later via browser-based scraping.
 COMPANIES = [
     # --- Greenhouse ---
-    Company(name="Stripe", ats="greenhouse", token="stripe"),
+    # content=True pulls the heavier payload so we can recover location from the
+    # `offices` array (Stripe uses "N/A" in location.name for country-level roles).
+    Company(name="Stripe", ats="greenhouse", token="stripe", extra={"content": True}),
     Company(name="Airbnb", ats="greenhouse", token="airbnb"),
     Company(name="Robinhood", ats="greenhouse", token="robinhood"),
     Company(name="Reddit", ats="greenhouse", token="reddit"),
