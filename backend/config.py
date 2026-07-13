@@ -28,6 +28,8 @@ COMPANIES = [
     Company(name="Datadog", ats="greenhouse", token="datadog"),
     Company(name="Lyft", ats="greenhouse", token="lyft"),
 
+    Company(name="Jane Street", ats="greenhouse", token="janestreet"),
+
     # --- Lever ---
     Company(name="Palantir", ats="lever", token="palantir"),
     Company(name="Spotify", ats="lever", token="spotify"),
@@ -49,6 +51,7 @@ COMPANIES = [
     Company(name="Cisco", ats="workday", extra={"tenant": "cisco", "site": "Cisco_Careers", "host": "wd5"}),
     Company(name="Capital One", ats="workday", extra={"tenant": "capitalone", "site": "Capital_One", "host": "wd12"}),
     Company(name="VMware (Broadcom)", ats="workday", extra={"tenant": "broadcom", "site": "External_Career", "host": "wd1"}),
+    Company(name="Workday", ats="workday", extra={"tenant": "workday", "site": "Workday", "host": "wd5"}),
 
     # --- Custom (unofficial but confirmed-working endpoints) ---
     Company(name="Amazon", ats="custom", extra={"fn": "amazon", "base_query": "software engineer"}),

@@ -96,6 +96,10 @@ EXCLUDE_KEYWORDS = [
     "internship",
     "co-op",
     "coop",
+
+    # --- Non-engineering roles that mention engineering keywords ---
+    "recruiter",
+    "recruiting",
 ]
 
 
