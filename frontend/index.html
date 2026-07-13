@@ -84,6 +84,14 @@
     color: var(--accent);
     border-color: var(--accent);
   }
+  .badge.no-sponsor {
+    color: #e5484d;
+    border-color: #e5484d;
+  }
+  .badge.sponsors {
+    color: var(--new);
+    border-color: var(--new);
+  }
   a.job-link {
     color: var(--accent);
     text-decoration: none;
@@ -185,6 +193,10 @@
       <input type="checkbox" id="hideAppliedToggle">
       Hide applied
     </label>
+    <label class="applied-toggle" style="color: var(--text);">
+      <input type="checkbox" id="hideNonSponsorToggle">
+      Hide non-sponsor
+    </label>
     <button id="refreshBtn">Refresh</button>
     <button id="pollBtn">Poll now</button>
     <button id="debugToggle"><span class="dot" id="debugDot"></span>Debug</button>
@@ -210,6 +222,17 @@ const empty = document.getElementById('empty');
 const companyFilter = document.getElementById('companyFilter');
 const locationFilter = document.getElementById('locationFilter');
 const hideAppliedToggle = document.getElementById('hideAppliedToggle');
+const hideNonSponsorToggle = document.getElementById('hideNonSponsorToggle');
+
+const NON_SPONSOR_FLAGS = ['Does Not Offer Sponsorship', 'U.S. Citizenship is Required'];
+
+function sponsorshipBadge(s) {
+  if (!s) return '';
+  if (s === 'Offers Sponsorship') return '<span class="badge sponsors">SPONSORS</span>';
+  if (s === 'Does Not Offer Sponsorship') return '<span class="badge no-sponsor">NO SPONSORSHIP</span>';
+  if (s === 'U.S. Citizenship is Required') return '<span class="badge no-sponsor">US CITIZEN ONLY</span>';
+  return '';
+}
 
 // --- USA-only filtering (option B: hide only clearly non-US) --------------
 // Location strings are freeform and inconsistent across sources, so this is a
@@ -291,6 +314,13 @@ async function loadJobs() {
       return true;
     });
   }
+  let hiddenNonSponsor = 0;
+  if (hideNonSponsorToggle.checked) {
+    jobs = jobs.filter(j => {
+      if (NON_SPONSOR_FLAGS.includes(j.sponsorship)) { hiddenNonSponsor++; return false; }
+      return true;
+    });
+  }
   jobList.innerHTML = '';
   empty.style.display = jobs.length ? 'none' : 'block';
   for (const j of jobs) {
@@ -299,7 +329,7 @@ async function loadJobs() {
     card.className = 'job-card' + (j.applied ? ' is-applied' : '');
     card.innerHTML = `
       <div>
-        <div class="job-title">${j.title} ${isNew ? '<span class="badge">NEW</span>' : ''} ${j.applied ? '<span class="badge applied">APPLIED</span>' : ''}</div>
+        <div class="job-title">${j.title} ${isNew ? '<span class="badge">NEW</span>' : ''} ${j.applied ? '<span class="badge applied">APPLIED</span>' : ''} ${sponsorshipBadge(j.sponsorship)}</div>
         <div class="job-meta">${j.company} · ${j.location || 'Location N/A'} · seen ${timeAgo(j.first_seen_at)}</div>
       </div>
       <div class="job-actions">
@@ -327,6 +357,7 @@ async function loadJobs() {
   const parts = [];
   if (hiddenNonUs) parts.push(`${hiddenNonUs} non-US hidden`);
   if (hiddenApplied) parts.push(`${hiddenApplied} applied hidden`);
+  if (hiddenNonSponsor) parts.push(`${hiddenNonSponsor} non-sponsor hidden`);
   const suffix = parts.length ? ` (${parts.join(', ')})` : '';
   status.textContent = jobs.length + ' postings' + suffix + ' · last refreshed ' + new Date().toLocaleTimeString();
 }
@@ -334,6 +365,7 @@ async function loadJobs() {
 document.getElementById('refreshBtn').addEventListener('click', loadJobs);
 locationFilter.addEventListener('change', loadJobs);
 hideAppliedToggle.addEventListener('change', loadJobs);
+hideNonSponsorToggle.addEventListener('change', loadJobs);
 document.getElementById('pollBtn').addEventListener('click', async () => {
   status.textContent = 'Polling all companies...';
   const res = await fetch('/api/poll', { method: 'POST' });

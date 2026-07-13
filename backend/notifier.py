@@ -45,8 +45,10 @@ def notify_new_jobs(jobs: list[dict]) -> bool:
         return False
     lines = [f"<b>{len(jobs)} new job posting(s) found:</b><br><br>"]
     for j in jobs:
+        sponsorship = j.get("sponsorship")
+        flag = f" — <i>{sponsorship}</i>" if sponsorship else ""
         lines.append(
-            f"<b>{j['company']}</b> — {j['title']} ({j.get('location', '')})<br>"
+            f"<b>{j['company']}</b> — {j['title']} ({j.get('location', '')}){flag}<br>"
             f"<a href='{j['url']}'>{j['url']}</a><br><br>"
         )
     body = "".join(lines)

@@ -56,4 +56,10 @@ COMPANIES = [
     # --- Custom (unofficial but confirmed-working endpoints) ---
     Company(name="Amazon", ats="custom", extra={"fn": "amazon", "base_query": "software engineer"}),
     Company(name="Uber", ats="custom", extra={"fn": "uber"}),  # unofficial endpoint, may break without notice
+
+    # --- Community feed: SimplifyJobs New-Grad-Positions (GitHub) ---
+    # Listings keep their real company names; the feed is already curated to
+    # early-career roles, so keywords=[""] matches every title and only the
+    # EXCLUDE list applies (drops the rare senior/intern stragglers).
+    Company(name="New-Grad Feed (GitHub)", ats="github_newgrad", keywords=[""]),
 ]

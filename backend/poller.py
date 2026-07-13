@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import httpx
 
 from . import db
-from .adapters import ashby, custom, eightfold, greenhouse, lever, smartrecruiters, workday
+from .adapters import ashby, custom, eightfold, github_newgrad, greenhouse, lever, smartrecruiters, workday
 from .adapters.base import Company, matches_keywords
 from .config import COMPANIES
 from .logging_setup import setup_logging
@@ -21,6 +21,7 @@ FETCHERS = {
     "ashby": ashby.fetch,
     "smartrecruiters": smartrecruiters.fetch,
     "eightfold": eightfold.fetch,
+    "github_newgrad": github_newgrad.fetch,
 }
 
 

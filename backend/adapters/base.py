@@ -126,7 +126,16 @@ def matches_keywords(title: str, keywords: list[str] | None = None, exclude: lis
     return True
 
 
-def normalize(job_id: str, company: str, title: str, location: str | None, url: str, posted_at: str | None = None) -> dict:
+def normalize(
+    job_id: str,
+    company: str,
+    title: str,
+    location: str | None,
+    url: str,
+    posted_at: str | None = None,
+    source: str = "ats",
+    sponsorship: str | None = None,
+) -> dict:
     return {
         "id": f"{company}:{job_id}",
         "company": company,
@@ -134,4 +143,6 @@ def normalize(job_id: str, company: str, title: str, location: str | None, url: 
         "location": location or "",
         "url": url,
         "posted_at": posted_at or "",
+        "source": source,
+        "sponsorship": sponsorship,
     }

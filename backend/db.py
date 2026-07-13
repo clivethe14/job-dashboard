@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     first_seen_at TEXT NOT NULL,
     notified INTEGER NOT NULL DEFAULT 0,
     applied INTEGER NOT NULL DEFAULT 0,
-    applied_at TEXT
+    applied_at TEXT,
+    source TEXT NOT NULL DEFAULT 'ats',
+    sponsorship TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company);
 CREATE INDEX IF NOT EXISTS idx_jobs_first_seen ON jobs(first_seen_at);
@@ -51,6 +53,10 @@ def _migrate(conn):
         conn.execute("ALTER TABLE jobs ADD COLUMN applied INTEGER NOT NULL DEFAULT 0")
     if "applied_at" not in cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN applied_at TEXT")
+    if "source" not in cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN source TEXT NOT NULL DEFAULT 'ats'")
+    if "sponsorship" not in cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN sponsorship TEXT")
 
 
 def init_db():
@@ -66,8 +72,8 @@ def job_exists(conn, job_id: str) -> bool:
 
 def insert_job(conn, job: dict, first_seen_at: str):
     conn.execute(
-        """INSERT OR IGNORE INTO jobs (id, company, title, location, url, posted_at, first_seen_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT OR IGNORE INTO jobs (id, company, title, location, url, posted_at, first_seen_at, source, sponsorship)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             job["id"],
             job["company"],
@@ -76,6 +82,8 @@ def insert_job(conn, job: dict, first_seen_at: str):
             job["url"],
             job.get("posted_at"),
             first_seen_at,
+            job.get("source", "ats"),
+            job.get("sponsorship"),
         ),
     )
 
