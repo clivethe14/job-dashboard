@@ -36,9 +36,11 @@ COMPANIES = [
 
     # --- Ashby ---
     Company(name="Notion", ats="ashby", token="notion"),
+    Company(name="Snowflake", ats="ashby", token="snowflake"),
 
     # --- SmartRecruiters ---
     Company(name="Block", ats="smartrecruiters", token="BlockRecruit"),
+    Company(name="ServiceNow", ats="smartrecruiters", token="servicenow"),
 
     # --- Eightfold ---
     Company(name="Netflix", ats="eightfold", extra={"domain": "netflix.com", "subdomain": "netflix"}),

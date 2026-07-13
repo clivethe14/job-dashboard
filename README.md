@@ -35,4 +35,16 @@ To start it immediately without logging off: double-click `start_dashboard.bat`,
 ## Adding a company
 
 Add a `Company(name=..., ats=..., token=...)` entry to `COMPANIES` in `backend/config.py`.
-Supported `ats` values: `greenhouse`, `lever`, `workday` (needs `extra={"tenant":..., "site":...}`), or a custom function registered in `backend/adapters/custom.py`.
+Supported `ats` values: `greenhouse`, `lever`, `workday` (needs `extra={"tenant":..., "site":...}`), `ashby`, `smartrecruiters`, `eightfold`, `github_newgrad`, or a custom function registered in `backend/adapters/custom.py`.
+
+## Sources beyond standard ATS platforms
+
+- **Microsoft / Apple / Google** — direct custom adapters (`backend/adapters/custom.py`). These parse each site's own (unofficial) data format, so they are more brittle than ATS APIs; they fail loudly into `poll_log`, so any breakage shows in the Debug sidebar.
+- **New-Grad Feed (GitHub)** — ingests the community-maintained [SimplifyJobs/New-Grad-Positions](https://github.com/SimplifyJobs/New-Grad-Positions) `listings.json`. Covers ~900 companies' early-career US roles (incl. companies with unscrapeable sites), each with a sponsorship flag surfaced as a badge. These listings keep their real company name but won't appear in the company-filter dropdown (which is built from the config list).
+
+### Known-hard sources (not integrated; use native email alerts on their sites)
+
+- **Meta** — GraphQL is bot-blocked to plain HTTP clients; the DirectEmployers mirror only refreshes ~weekly. Covered by the GitHub feed + native alerts.
+- **IBM** — `www-api.ibm.com/search/api/v2` is live but needs its exact request payload captured from the careers site's network traffic.
+- **Oracle** — Oracle Recruiting Cloud REST works but needs the real `siteNumber` for Oracle's own tenant (capture from careers.oracle.com).
+- **Bloomberg / Two Sigma / Atlassian** (Avature), **Citadel** (bot-blocked), **SAP** (SuccessFactors, auth-gated) — no clean public feed.
