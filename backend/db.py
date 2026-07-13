@@ -13,7 +13,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     url TEXT NOT NULL,
     posted_at TEXT,
     first_seen_at TEXT NOT NULL,
-    notified INTEGER NOT NULL DEFAULT 0
+    notified INTEGER NOT NULL DEFAULT 0,
+    applied INTEGER NOT NULL DEFAULT 0,
+    applied_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company);
 CREATE INDEX IF NOT EXISTS idx_jobs_first_seen ON jobs(first_seen_at);
@@ -41,9 +43,20 @@ def get_conn():
         conn.close()
 
 
+def _migrate(conn):
+    """Add columns introduced after the DB was first created. CREATE TABLE IF NOT
+    EXISTS in SCHEMA only applies to fresh databases, so existing ones need this."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+    if "applied" not in cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN applied INTEGER NOT NULL DEFAULT 0")
+    if "applied_at" not in cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN applied_at TEXT")
+
+
 def init_db():
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
 
 
 def job_exists(conn, job_id: str) -> bool:
@@ -91,6 +104,15 @@ def unnotified_jobs(conn):
 
 def mark_notified(conn, job_ids: list[str]):
     conn.executemany("UPDATE jobs SET notified = 1 WHERE id = ?", [(jid,) for jid in job_ids])
+
+
+def set_applied(conn, job_id: str, applied: bool, applied_at: str | None) -> bool:
+    """Returns True if a row was updated, False if job_id doesn't exist."""
+    cur = conn.execute(
+        "UPDATE jobs SET applied = ?, applied_at = ? WHERE id = ?",
+        (1 if applied else 0, applied_at if applied else None, job_id),
+    )
+    return cur.rowcount > 0
 
 
 def latest_poll_status(conn):

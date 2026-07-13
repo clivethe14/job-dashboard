@@ -80,11 +80,39 @@
     padding: 2px 8px;
     white-space: nowrap;
   }
+  .badge.applied {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
   a.job-link {
     color: var(--accent);
     text-decoration: none;
     font-size: 13px;
     white-space: nowrap;
+  }
+  .job-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .applied-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .applied-toggle input { cursor: pointer; }
+  .job-card.is-applied {
+    opacity: 0.55;
+  }
+  .job-card.is-applied .job-title {
+    text-decoration: line-through;
+    text-decoration-color: var(--muted);
   }
   #status { color: var(--muted); font-size: 13px; margin-top: 8px; }
   #empty { color: var(--muted); padding: 40px 0; text-align: center; }
@@ -153,6 +181,10 @@
       <option value="all">All locations</option>
       <option value="usa">USA only</option>
     </select>
+    <label class="applied-toggle" style="color: var(--text);">
+      <input type="checkbox" id="hideAppliedToggle">
+      Hide applied
+    </label>
     <button id="refreshBtn">Refresh</button>
     <button id="pollBtn">Poll now</button>
     <button id="debugToggle"><span class="dot" id="debugDot"></span>Debug</button>
@@ -177,6 +209,7 @@ const status = document.getElementById('status');
 const empty = document.getElementById('empty');
 const companyFilter = document.getElementById('companyFilter');
 const locationFilter = document.getElementById('locationFilter');
+const hideAppliedToggle = document.getElementById('hideAppliedToggle');
 
 // --- USA-only filtering (option B: hide only clearly non-US) --------------
 // Location strings are freeform and inconsistent across sources, so this is a
@@ -229,17 +262,32 @@ async function loadCompanies() {
   }
 }
 
+async function setApplied(jobId, applied) {
+  const res = await fetch('/api/jobs/applied', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: jobId, applied }),
+  });
+  if (!res.ok) throw new Error('failed to update applied status');
+}
+
 async function loadJobs() {
   status.textContent = 'Loading...';
   const company = companyFilter.value;
   const url = '/api/jobs' + (company ? '?company=' + encodeURIComponent(company) : '');
   const res = await fetch(url);
   let jobs = await res.json();
-  const total = jobs.length;
-  let hidden = 0;
+  let hiddenNonUs = 0;
   if (locationFilter.value === 'usa') {
     jobs = jobs.filter(j => {
-      if (isClearlyNonUs(j.location)) { hidden++; return false; }
+      if (isClearlyNonUs(j.location)) { hiddenNonUs++; return false; }
+      return true;
+    });
+  }
+  let hiddenApplied = 0;
+  if (hideAppliedToggle.checked) {
+    jobs = jobs.filter(j => {
+      if (j.applied) { hiddenApplied++; return false; }
       return true;
     });
   }
@@ -248,22 +296,44 @@ async function loadJobs() {
   for (const j of jobs) {
     const isNew = (Date.now() - new Date(j.first_seen_at).getTime()) < 24 * 3600 * 1000;
     const card = document.createElement('div');
-    card.className = 'job-card';
+    card.className = 'job-card' + (j.applied ? ' is-applied' : '');
     card.innerHTML = `
       <div>
-        <div class="job-title">${j.title} ${isNew ? '<span class="badge">NEW</span>' : ''}</div>
+        <div class="job-title">${j.title} ${isNew ? '<span class="badge">NEW</span>' : ''} ${j.applied ? '<span class="badge applied">APPLIED</span>' : ''}</div>
         <div class="job-meta">${j.company} · ${j.location || 'Location N/A'} · seen ${timeAgo(j.first_seen_at)}</div>
       </div>
-      <a class="job-link" href="${j.url}" target="_blank" rel="noopener">View →</a>
+      <div class="job-actions">
+        <a class="job-link" href="${j.url}" target="_blank" rel="noopener">View →</a>
+        <label class="applied-toggle">
+          <input type="checkbox" class="applied-checkbox" ${j.applied ? 'checked' : ''}>
+          Applied
+        </label>
+      </div>
     `;
+    const checkbox = card.querySelector('.applied-checkbox');
+    checkbox.addEventListener('change', async () => {
+      checkbox.disabled = true;
+      try {
+        await setApplied(j.id, checkbox.checked);
+        await loadJobs();
+      } catch (e) {
+        checkbox.checked = !checkbox.checked;
+        checkbox.disabled = false;
+        status.textContent = 'Failed to update applied status — try again.';
+      }
+    });
     jobList.appendChild(card);
   }
-  const suffix = hidden ? ` (${hidden} non-US hidden)` : '';
+  const parts = [];
+  if (hiddenNonUs) parts.push(`${hiddenNonUs} non-US hidden`);
+  if (hiddenApplied) parts.push(`${hiddenApplied} applied hidden`);
+  const suffix = parts.length ? ` (${parts.join(', ')})` : '';
   status.textContent = jobs.length + ' postings' + suffix + ' · last refreshed ' + new Date().toLocaleTimeString();
 }
 
 document.getElementById('refreshBtn').addEventListener('click', loadJobs);
 locationFilter.addEventListener('change', loadJobs);
+hideAppliedToggle.addEventListener('change', loadJobs);
 document.getElementById('pollBtn').addEventListener('click', async () => {
   status.textContent = 'Polling all companies...';
   const res = await fetch('/api/poll', { method: 'POST' });

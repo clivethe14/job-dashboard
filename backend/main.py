@@ -1,10 +1,12 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -61,6 +63,21 @@ def get_errors(limit: int = 50):
 async def trigger_poll():
     new_jobs = await poll_all()
     return {"new_jobs": len(new_jobs)}
+
+
+class AppliedUpdate(BaseModel):
+    id: str
+    applied: bool
+
+
+@app.post("/api/jobs/applied")
+def set_applied(update: AppliedUpdate):
+    applied_at = datetime.now(timezone.utc).isoformat() if update.applied else None
+    with db.get_conn() as conn:
+        updated = db.set_applied(conn, update.id, update.applied, applied_at)
+    if not updated:
+        raise HTTPException(status_code=404, detail="job not found")
+    return {"id": update.id, "applied": update.applied, "applied_at": applied_at}
 
 
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
