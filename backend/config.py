@@ -56,6 +56,9 @@ COMPANIES = [
     # --- Custom (unofficial but confirmed-working endpoints) ---
     Company(name="Amazon", ats="custom", extra={"fn": "amazon", "base_query": "software engineer"}),
     Company(name="Uber", ats="custom", extra={"fn": "uber"}),  # unofficial endpoint, may break without notice
+    Company(name="Microsoft", ats="custom", extra={"fn": "microsoft"}),
+    Company(name="Apple", ats="custom", extra={"fn": "apple"}),
+    Company(name="Google", ats="custom", extra={"fn": "google"}),  # brittle positional HTML parse
 
     # --- Community feed: SimplifyJobs New-Grad-Positions (GitHub) ---
     # Listings keep their real company names; the feed is already curated to
