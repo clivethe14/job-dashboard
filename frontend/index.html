@@ -108,6 +108,48 @@
   }
   .dismiss-btn:hover { color: #e5484d; border-color: #e5484d; opacity: 1; }
   .job-card.is-dismissed { opacity: 0.45; }
+
+  .doc-link {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0;
+    white-space: nowrap;
+  }
+  #modalOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  #modalOverlay.open { display: flex; }
+  #uploadModal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 24px;
+    width: min(440px, 90vw);
+  }
+  #uploadModal h2 { font-size: 15px; margin: 0 0 4px; }
+  #uploadModal .modal-sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  #uploadModal input[type="file"] {
+    width: 100%;
+    font-size: 13px;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+  #uploadModal .file-list { color: var(--muted); font-size: 12px; margin-bottom: 14px; min-height: 16px; }
+  #uploadModal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  #uploadModal .secondary {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
   a.job-link {
     color: var(--accent);
     text-decoration: none;
@@ -235,6 +277,19 @@
     <div id="errorList"></div>
   </aside>
 </div>
+<div id="modalOverlay">
+  <div id="uploadModal">
+    <h2 id="modalTitle">Upload application documents</h2>
+    <div class="modal-sub" id="modalSub"></div>
+    <input type="file" id="modalFiles" multiple>
+    <div class="file-list" id="modalFileList"></div>
+    <div class="modal-actions">
+      <button class="secondary" id="modalCancel">Cancel</button>
+      <button class="secondary" id="modalSkip">Skip (mark applied only)</button>
+      <button id="modalUpload">Upload &amp; mark applied</button>
+    </div>
+  </div>
+</div>
 <script>
 const jobList = document.getElementById('jobList');
 const status = document.getElementById('status');
@@ -322,7 +377,88 @@ async function setDismissed(jobId, dismissed) {
     body: JSON.stringify({ id: jobId, dismissed }),
   });
   if (!res.ok) throw new Error('failed to update dismissed status');
+  return res.json();
 }
+
+function requestFolder(jobId) {
+  // fire-and-forget: creates <base>\Company\Title on disk
+  fetch('/api/jobs/folder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: jobId }),
+  }).catch(() => {});
+}
+
+async function uploadDocuments(jobId, files) {
+  const form = new FormData();
+  form.append('id', jobId);
+  for (const f of files) form.append('files', f);
+  const res = await fetch('/api/jobs/documents', { method: 'POST', body: form });
+  if (!res.ok) throw new Error('upload failed');
+  return res.json();
+}
+
+// ---- Upload modal ----------------------------------------------------------
+const modalOverlay = document.getElementById('modalOverlay');
+const modalSub = document.getElementById('modalSub');
+const modalFiles = document.getElementById('modalFiles');
+const modalFileList = document.getElementById('modalFileList');
+const modalUpload = document.getElementById('modalUpload');
+const modalSkip = document.getElementById('modalSkip');
+const modalCancel = document.getElementById('modalCancel');
+let modalCtx = null; // { job, mode: 'apply' | 'add' }
+
+function openUploadModal(job, mode) {
+  modalCtx = { job, mode };
+  modalSub.textContent = `${job.company} — ${job.title}`;
+  modalFiles.value = '';
+  modalFileList.textContent = '';
+  modalSkip.style.display = mode === 'apply' ? '' : 'none';
+  modalUpload.textContent = mode === 'apply' ? 'Upload & mark applied' : 'Upload';
+  modalOverlay.classList.add('open');
+}
+
+function closeUploadModal() {
+  modalOverlay.classList.remove('open');
+  modalCtx = null;
+}
+
+modalFiles.addEventListener('change', () => {
+  modalFileList.textContent = [...modalFiles.files].map(f => f.name).join(' · ');
+});
+
+modalCancel.addEventListener('click', async () => {
+  closeUploadModal();
+  await loadJobs(); // reverts the optimistic checkbox
+});
+
+modalSkip.addEventListener('click', async () => {
+  const { job } = modalCtx;
+  closeUploadModal();
+  try { await setApplied(job.id, true); } catch (e) { status.textContent = 'Failed to mark applied — try again.'; }
+  await loadJobs();
+});
+
+modalUpload.addEventListener('click', async () => {
+  const { job, mode } = modalCtx;
+  if (!modalFiles.files.length) { modalFileList.textContent = 'Choose at least one file (or Skip).'; return; }
+  modalUpload.disabled = true;
+  let message = null;
+  try {
+    const result = await uploadDocuments(job.id, modalFiles.files);
+    if (mode === 'apply') await setApplied(job.id, true);
+    closeUploadModal();
+    message = `Saved ${result.saved.length} file(s) to ${result.folder_path}`;
+  } catch (e) {
+    modalFileList.textContent = 'Upload failed — try again.';
+  } finally {
+    modalUpload.disabled = false;
+  }
+  if (message !== null) {
+    await loadJobs();
+    status.textContent = message;
+  }
+});
 
 async function loadJobs() {
   status.textContent = 'Loading...';
@@ -375,27 +511,45 @@ async function loadJobs() {
           <input type="checkbox" class="applied-checkbox" ${j.applied ? 'checked' : ''}>
           Applied
         </label>
+        ${j.applied ? '<button class="doc-link add-docs-btn">Add docs</button>' : ''}
+        ${j.applied && j.folder_path ? '<button class="doc-link open-folder-btn">📁 Open folder</button>' : ''}
         <button class="dismiss-btn">${j.dismissed ? 'Restore' : 'Not a fit ✕'}</button>
       </div>
     `;
+    card.querySelector('.job-link').addEventListener('click', () => requestFolder(j.id));
     const checkbox = card.querySelector('.applied-checkbox');
     checkbox.addEventListener('change', async () => {
+      if (checkbox.checked) {
+        openUploadModal(j, 'apply');  // Cancel reverts via loadJobs()
+        return;
+      }
       checkbox.disabled = true;
       try {
-        await setApplied(j.id, checkbox.checked);
+        await setApplied(j.id, false);
         await loadJobs();
       } catch (e) {
-        checkbox.checked = !checkbox.checked;
+        checkbox.checked = true;
         checkbox.disabled = false;
         status.textContent = 'Failed to update applied status — try again.';
       }
+    });
+    const addDocsBtn = card.querySelector('.add-docs-btn');
+    if (addDocsBtn) addDocsBtn.addEventListener('click', () => openUploadModal(j, 'add'));
+    const openFolderBtn = card.querySelector('.open-folder-btn');
+    if (openFolderBtn) openFolderBtn.addEventListener('click', () => {
+      fetch('/api/jobs/open-folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: j.id }),
+      }).catch(() => {});
     });
     const dismissBtn = card.querySelector('.dismiss-btn');
     dismissBtn.addEventListener('click', async () => {
       dismissBtn.disabled = true;
       try {
-        await setDismissed(j.id, !j.dismissed);
+        const result = await setDismissed(j.id, !j.dismissed);
         await loadJobs();
+        if (result.folder_deleted) status.textContent += ' · folder moved to Recycle Bin';
       } catch (e) {
         dismissBtn.disabled = false;
         status.textContent = 'Failed to update — try again.';

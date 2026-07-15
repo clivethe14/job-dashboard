@@ -32,6 +32,14 @@ Run `.\setup_startup_shortcut.ps1` once — it drops a shortcut to `start_dashbo
 
 To start it immediately without logging off: double-click `start_dashboard.bat`, or run `Start-Process "start_dashboard.bat"` from PowerShell.
 
+## Application documents
+
+Each job you interact with gets its own folder under `APPLICATIONS_DIR` (default `D:\Documents\Job Applications`, override in `.env`), structured `Company\Job Title\`:
+
+- **View →** creates the folder (so it's ready for your tailored resume).
+- **Marking Applied** opens an upload dialog — pick the resume/cover letter you used, or Skip. Add more later via "Add docs"; "📁 Open folder" opens it in Explorer.
+- **Not a fit** moves the job's folder to the Recycle Bin (never for jobs marked Applied; empty company folders are cleaned up).
+
 ## Adding a company
 
 Add a `Company(name=..., ats=..., token=...)` entry to `COMPANIES` in `backend/config.py`.

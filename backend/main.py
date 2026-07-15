@@ -3,14 +3,14 @@ from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 load_dotenv()
 
-from . import db  # noqa: E402
+from . import db, documents  # noqa: E402
 from .config import COMPANIES, POLL_INTERVAL_MINUTES  # noqa: E402
 from .poller import poll_all  # noqa: E402
 
@@ -88,11 +88,67 @@ class DismissedUpdate(BaseModel):
 @app.post("/api/jobs/dismissed")
 def set_dismissed(update: DismissedUpdate):
     dismissed_at = datetime.now(timezone.utc).isoformat() if update.dismissed else None
+    folder_deleted = False
     with db.get_conn() as conn:
-        updated = db.set_dismissed(conn, update.id, update.dismissed, dismissed_at)
-    if not updated:
+        job = db.get_job(conn, update.id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="job not found")
+        db.set_dismissed(conn, update.id, update.dismissed, dismissed_at)
+        if update.dismissed:
+            folder_deleted = documents.delete_folder(conn, job)
+    return {
+        "id": update.id,
+        "dismissed": update.dismissed,
+        "dismissed_at": dismissed_at,
+        "folder_deleted": folder_deleted,
+    }
+
+
+class FolderRequest(BaseModel):
+    id: str
+
+
+@app.post("/api/jobs/folder")
+def create_folder(req: FolderRequest):
+    with db.get_conn() as conn:
+        job = db.get_job(conn, req.id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="job not found")
+        folder_path = documents.ensure_folder(conn, job)
+    return {"id": req.id, "folder_path": folder_path}
+
+
+@app.post("/api/jobs/documents")
+async def upload_documents(id: str = Form(...), files: list[UploadFile] = File(...)):
+    payload = [(f.filename or "document", await f.read()) for f in files]
+    with db.get_conn() as conn:
+        job = db.get_job(conn, id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="job not found")
+        folder_path = documents.ensure_folder(conn, job)
+        saved = documents.save_documents(folder_path, payload)
+    return {"id": id, "folder_path": folder_path, "saved": saved}
+
+
+@app.get("/api/jobs/documents")
+def get_documents(id: str):
+    with db.get_conn() as conn:
+        job = db.get_job(conn, id)
+    if job is None:
         raise HTTPException(status_code=404, detail="job not found")
-    return {"id": update.id, "dismissed": update.dismissed, "dismissed_at": dismissed_at}
+    return {"id": id, "folder_path": job.get("folder_path"), "documents": documents.list_documents(job.get("folder_path"))}
+
+
+@app.post("/api/jobs/open-folder")
+def open_folder(req: FolderRequest):
+    with db.get_conn() as conn:
+        job = db.get_job(conn, req.id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if not job.get("folder_path"):
+        raise HTTPException(status_code=404, detail="no folder for this job")
+    documents.open_folder(job["folder_path"])
+    return {"opened": job["folder_path"]}
 
 
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")

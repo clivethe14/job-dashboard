@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     source TEXT NOT NULL DEFAULT 'ats',
     sponsorship TEXT,
     dismissed INTEGER NOT NULL DEFAULT 0,
-    dismissed_at TEXT
+    dismissed_at TEXT,
+    folder_path TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company);
 CREATE INDEX IF NOT EXISTS idx_jobs_first_seen ON jobs(first_seen_at);
@@ -63,6 +64,8 @@ def _migrate(conn):
         conn.execute("ALTER TABLE jobs ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0")
     if "dismissed_at" not in cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN dismissed_at TEXT")
+    if "folder_path" not in cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN folder_path TEXT")
 
 
 def init_db():
@@ -127,6 +130,15 @@ def set_applied(conn, job_id: str, applied: bool, applied_at: str | None) -> boo
         (1 if applied else 0, applied_at if applied else None, job_id),
     )
     return cur.rowcount > 0
+
+
+def get_job(conn, job_id: str) -> dict | None:
+    row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def set_folder_path(conn, job_id: str, folder_path: str | None):
+    conn.execute("UPDATE jobs SET folder_path = ? WHERE id = ?", (folder_path, job_id))
 
 
 def set_dismissed(conn, job_id: str, dismissed: bool, dismissed_at: str | None) -> bool:
