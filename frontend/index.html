@@ -92,6 +92,22 @@
     color: var(--new);
     border-color: var(--new);
   }
+  .badge.dismissed {
+    color: var(--muted);
+    border-color: var(--muted);
+  }
+  .dismiss-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .dismiss-btn:hover { color: #e5484d; border-color: #e5484d; opacity: 1; }
+  .job-card.is-dismissed { opacity: 0.45; }
   a.job-link {
     color: var(--accent);
     text-decoration: none;
@@ -197,6 +213,10 @@
       <input type="checkbox" id="hideNonSponsorToggle">
       Hide non-sponsor
     </label>
+    <label class="applied-toggle" style="color: var(--text);">
+      <input type="checkbox" id="showDismissedToggle">
+      Show dismissed
+    </label>
     <button id="refreshBtn">Refresh</button>
     <button id="pollBtn">Poll now</button>
     <button id="debugToggle"><span class="dot" id="debugDot"></span>Debug</button>
@@ -223,6 +243,7 @@ const companyFilter = document.getElementById('companyFilter');
 const locationFilter = document.getElementById('locationFilter');
 const hideAppliedToggle = document.getElementById('hideAppliedToggle');
 const hideNonSponsorToggle = document.getElementById('hideNonSponsorToggle');
+const showDismissedToggle = document.getElementById('showDismissedToggle');
 
 const NON_SPONSOR_FLAGS = ['Does Not Offer Sponsorship', 'U.S. Citizenship is Required'];
 
@@ -294,6 +315,15 @@ async function setApplied(jobId, applied) {
   if (!res.ok) throw new Error('failed to update applied status');
 }
 
+async function setDismissed(jobId, dismissed) {
+  const res = await fetch('/api/jobs/dismissed', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: jobId, dismissed }),
+  });
+  if (!res.ok) throw new Error('failed to update dismissed status');
+}
+
 async function loadJobs() {
   status.textContent = 'Loading...';
   const company = companyFilter.value;
@@ -321,15 +351,22 @@ async function loadJobs() {
       return true;
     });
   }
+  let hiddenDismissed = 0;
+  if (!showDismissedToggle.checked) {
+    jobs = jobs.filter(j => {
+      if (j.dismissed) { hiddenDismissed++; return false; }
+      return true;
+    });
+  }
   jobList.innerHTML = '';
   empty.style.display = jobs.length ? 'none' : 'block';
   for (const j of jobs) {
     const isNew = (Date.now() - new Date(j.first_seen_at).getTime()) < 24 * 3600 * 1000;
     const card = document.createElement('div');
-    card.className = 'job-card' + (j.applied ? ' is-applied' : '');
+    card.className = 'job-card' + (j.applied ? ' is-applied' : '') + (j.dismissed ? ' is-dismissed' : '');
     card.innerHTML = `
       <div>
-        <div class="job-title">${j.title} ${isNew ? '<span class="badge">NEW</span>' : ''} ${j.applied ? '<span class="badge applied">APPLIED</span>' : ''} ${sponsorshipBadge(j.sponsorship)}</div>
+        <div class="job-title">${j.title} ${isNew ? '<span class="badge">NEW</span>' : ''} ${j.applied ? '<span class="badge applied">APPLIED</span>' : ''} ${j.dismissed ? '<span class="badge dismissed">NOT A FIT</span>' : ''} ${sponsorshipBadge(j.sponsorship)}</div>
         <div class="job-meta">${j.company} · ${j.location || 'Location N/A'} · seen ${timeAgo(j.first_seen_at)}</div>
       </div>
       <div class="job-actions">
@@ -338,6 +375,7 @@ async function loadJobs() {
           <input type="checkbox" class="applied-checkbox" ${j.applied ? 'checked' : ''}>
           Applied
         </label>
+        <button class="dismiss-btn">${j.dismissed ? 'Restore' : 'Not a fit ✕'}</button>
       </div>
     `;
     const checkbox = card.querySelector('.applied-checkbox');
@@ -352,12 +390,24 @@ async function loadJobs() {
         status.textContent = 'Failed to update applied status — try again.';
       }
     });
+    const dismissBtn = card.querySelector('.dismiss-btn');
+    dismissBtn.addEventListener('click', async () => {
+      dismissBtn.disabled = true;
+      try {
+        await setDismissed(j.id, !j.dismissed);
+        await loadJobs();
+      } catch (e) {
+        dismissBtn.disabled = false;
+        status.textContent = 'Failed to update — try again.';
+      }
+    });
     jobList.appendChild(card);
   }
   const parts = [];
   if (hiddenNonUs) parts.push(`${hiddenNonUs} non-US hidden`);
   if (hiddenApplied) parts.push(`${hiddenApplied} applied hidden`);
   if (hiddenNonSponsor) parts.push(`${hiddenNonSponsor} non-sponsor hidden`);
+  if (hiddenDismissed) parts.push(`${hiddenDismissed} dismissed hidden`);
   const suffix = parts.length ? ` (${parts.join(', ')})` : '';
   status.textContent = jobs.length + ' postings' + suffix + ' · last refreshed ' + new Date().toLocaleTimeString();
 }
@@ -366,6 +416,7 @@ document.getElementById('refreshBtn').addEventListener('click', loadJobs);
 locationFilter.addEventListener('change', loadJobs);
 hideAppliedToggle.addEventListener('change', loadJobs);
 hideNonSponsorToggle.addEventListener('change', loadJobs);
+showDismissedToggle.addEventListener('change', loadJobs);
 document.getElementById('pollBtn').addEventListener('click', async () => {
   status.textContent = 'Polling all companies...';
   const res = await fetch('/api/poll', { method: 'POST' });

@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     applied INTEGER NOT NULL DEFAULT 0,
     applied_at TEXT,
     source TEXT NOT NULL DEFAULT 'ats',
-    sponsorship TEXT
+    sponsorship TEXT,
+    dismissed INTEGER NOT NULL DEFAULT 0,
+    dismissed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company);
 CREATE INDEX IF NOT EXISTS idx_jobs_first_seen ON jobs(first_seen_at);
@@ -57,6 +59,10 @@ def _migrate(conn):
         conn.execute("ALTER TABLE jobs ADD COLUMN source TEXT NOT NULL DEFAULT 'ats'")
     if "sponsorship" not in cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN sponsorship TEXT")
+    if "dismissed" not in cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0")
+    if "dismissed_at" not in cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN dismissed_at TEXT")
 
 
 def init_db():
@@ -119,6 +125,15 @@ def set_applied(conn, job_id: str, applied: bool, applied_at: str | None) -> boo
     cur = conn.execute(
         "UPDATE jobs SET applied = ?, applied_at = ? WHERE id = ?",
         (1 if applied else 0, applied_at if applied else None, job_id),
+    )
+    return cur.rowcount > 0
+
+
+def set_dismissed(conn, job_id: str, dismissed: bool, dismissed_at: str | None) -> bool:
+    """Returns True if a row was updated, False if job_id doesn't exist."""
+    cur = conn.execute(
+        "UPDATE jobs SET dismissed = ?, dismissed_at = ? WHERE id = ?",
+        (1 if dismissed else 0, dismissed_at if dismissed else None, job_id),
     )
     return cur.rowcount > 0
 

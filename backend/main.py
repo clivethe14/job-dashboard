@@ -80,6 +80,21 @@ def set_applied(update: AppliedUpdate):
     return {"id": update.id, "applied": update.applied, "applied_at": applied_at}
 
 
+class DismissedUpdate(BaseModel):
+    id: str
+    dismissed: bool
+
+
+@app.post("/api/jobs/dismissed")
+def set_dismissed(update: DismissedUpdate):
+    dismissed_at = datetime.now(timezone.utc).isoformat() if update.dismissed else None
+    with db.get_conn() as conn:
+        updated = db.set_dismissed(conn, update.id, update.dismissed, dismissed_at)
+    if not updated:
+        raise HTTPException(status_code=404, detail="job not found")
+    return {"id": update.id, "dismissed": update.dismissed, "dismissed_at": dismissed_at}
+
+
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 
