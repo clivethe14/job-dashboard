@@ -23,7 +23,7 @@ scheduler = AsyncIOScheduler()
 @app.on_event("startup")
 async def startup():
     db.init_db()
-    scheduler.add_job(poll_all, "interval", minutes=POLL_INTERVAL_MINUTES, next_run_time=None)
+    scheduler.add_job(poll_all, "interval", minutes=POLL_INTERVAL_MINUTES)
     scheduler.start()
     # kick off an immediate poll in the background
     import asyncio
