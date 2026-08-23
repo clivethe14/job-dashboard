@@ -5,6 +5,8 @@ via `normalize()`. Register the function name in a company's `extra={"fn": "..."
 in config.py.
 """
 
+import asyncio
+
 import httpx
 
 from .base import Company, normalize
@@ -50,49 +52,101 @@ async def amazon(client: httpx.AsyncClient, company: Company) -> list[dict]:
     return jobs
 
 
-def _format_loc(loc: dict) -> str:
-    # Uber's "region" is the county (e.g. "King", "Santa Clara"), not the state,
-    # so it's dropped to avoid noisy/redundant strings like "Seattle, King, USA".
-    if not isinstance(loc, dict):
-        return ""
-    parts = [loc.get("city"), loc.get("country")]
-    return ", ".join(p for p in parts if p)
+# Uber's job taxonomy. Only these teams are pulled; the rest (Sales, Operations,
+# Customer Support, ...) are irrelevant to a SWE search. Override per-company
+# with extra={"teams": [...]}.
+UBER_TEAMS = ["Engineer", "Science", "Product", "Data"]
+UBER_MAX_PAGES_PER_TEAM = 40  # safety stop; Engineer is ~13 pages today
 
 
-def _uber_location(j: dict) -> str:
-    primary = _format_loc(j.get("location") or {})
-    all_locs = j.get("allLocations") or []
-    extra = len(all_locs) - 1
+def _uber_location(job: dict) -> str:
+    """New API gives a pre-formatted Address ('Sunnyvale, CA, USA') per location."""
+    locs = job.get("Locations") or []
+    if not locs:
+        return "Remote" if job.get("Remote") else ""
+    primary = (locs[0].get("Address") or "").strip()
+    if not primary:
+        parts = [locs[0].get("City"), locs[0].get("Region"), locs[0].get("Country")]
+        primary = ", ".join(p for p in parts if p)
+    extra = len(locs) - 1
     if primary and extra > 0:
         return f"{primary} (+{extra} more)"
     return primary
 
 
+def _uber_url(job: dict) -> str:
+    for u in job.get("Urls") or []:
+        if u.get("IsDefault") and u.get("Url"):
+            return "https://jobs.uber.com" + u["Url"]
+    for u in job.get("Urls") or []:
+        if u.get("Url"):
+            return "https://jobs.uber.com" + u["Url"]
+    return f"https://jobs.uber.com/en/jobs/{job.get('Id')}/"
+
+
 async def uber(client: httpx.AsyncClient, company: Company) -> list[dict]:
-    """Uber's internal careers search API. Brittle/unofficial — grabs a session
-    cookie from the careers page first, then calls the search endpoint."""
-    await client.get("https://www.uber.com/us/en/careers/list/", timeout=20)
-    resp = await client.post(
-        "https://www.uber.com/api/loadSearchJobsResults",
-        json={"params": {"query": "software engineer", "limit": 100, "page": 0}},
-        headers={"x-csrf-token": "x"},
-        timeout=20,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    results = (data.get("data") or {}).get("results", [])
-    jobs = []
-    for j in results:
-        jobs.append(
-            normalize(
-                job_id=str(j.get("id")),
-                company=company.name,
-                title=j.get("title", ""),
-                location=_uber_location(j),
-                url=f"https://www.uber.com/us/en/careers/list/{j.get('id')}/",
-                posted_at=j.get("creationDate"),
+    """Uber careers (jobs.uber.com, a Happydance/Next.js site as of Aug 2026).
+
+    Public JSON search API, paginated 10 per page, one pass per team.
+
+    NOTE: the shared httpx `client` is deliberately NOT used here. Uber's edge
+    fingerprints the TLS handshake (JA3) and rejects Python's OpenSSL signature
+    with a 403 regardless of headers, while curl and real browsers pass. We use
+    curl_cffi, which replays a Chrome TLS fingerprint, so this adapter keeps its
+    own session.
+
+    Also note: the `search` param only re-ranks by relevance, it does NOT narrow
+    the result set, and `country` is ignored -- so role/location filtering is
+    left to matches_keywords() and the dashboard's USA-only toggle.
+    """
+    from curl_cffi.requests import AsyncSession
+
+    base = "https://jobs.uber.com/api/jobs/search/"
+    teams = company.extra.get("teams") or UBER_TEAMS
+    impersonate = company.extra.get("impersonate", "chrome")
+    sem = asyncio.Semaphore(5)  # be polite: cap concurrent requests
+
+    def parse(data: dict, seen: set[str], out: list[dict]) -> None:
+        for j in data.get("jobs") or []:
+            job_id = str(j.get("Id") or j.get("Reference") or "")
+            if not job_id or job_id in seen:
+                continue  # a job can be tagged with several teams
+            seen.add(job_id)
+            out.append(
+                normalize(
+                    job_id=job_id,
+                    company=company.name,
+                    title=j.get("Title") or "",
+                    location=_uber_location(j),
+                    url=_uber_url(j),
+                    posted_at=j.get("DisplayDate"),
+                )
             )
-        )
+
+    jobs: list[dict] = []
+    seen: set[str] = set()
+
+    async with AsyncSession() as session:
+        async def fetch(team: str, page: int) -> dict:
+            async with sem:
+                resp = await session.get(
+                    base,
+                    params={"team": team, "page": page},
+                    impersonate=impersonate,
+                    timeout=25,
+                )
+                if resp.status_code != 200:
+                    raise RuntimeError(f"Uber API returned {resp.status_code} for team={team} page={page}")
+                return resp.json()
+
+        for team in teams:
+            first = await fetch(team, 1)
+            parse(first, seen, jobs)
+            total_pages = min(first.get("totalPages", 1) or 1, UBER_MAX_PAGES_PER_TEAM)
+            if total_pages > 1:
+                rest = await asyncio.gather(*[fetch(team, p) for p in range(2, total_pages + 1)])
+                for data in rest:
+                    parse(data, seen, jobs)
     return jobs
 
 
